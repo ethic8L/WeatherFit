@@ -396,7 +396,7 @@ export default function Outfit() {
 
               <View style={styles.pinterestPreviewWrap}>
                 <Text style={styles.pinterestPreviewTitle}>
-                  Pinterest preview (1 example)
+                  Pinterest preview
                 </Text>
                 <View style={styles.pinterestFrame}>
                   <WebView
