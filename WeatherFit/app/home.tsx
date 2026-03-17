@@ -1,4 +1,5 @@
 import {
+  Animated,
   ScrollView,
   View,
   Image,
@@ -8,14 +9,80 @@ import {
   Keyboard,
   StyleSheet,
 } from "react-native";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getWeather } from "../services/weatherApi";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
+import { getSettings, type UnitSystem } from "../services/settingsStorage";
 
 export default function Home() {
   const [city, setCity] = useState("");
   const [weather, setWeather] = useState<any>(null);
   const [isInputFocused, setIsInputFocused] = useState(false);
+  const [unitSystem, setUnitSystem] = useState<UnitSystem>("metric");
+  const cardOpacity = useRef(new Animated.Value(0)).current;
+  const cardTranslateY = useRef(new Animated.Value(24)).current;
+  const cardScale = useRef(new Animated.Value(0.96)).current;
+
+  const unitLabel = unitSystem === "metric" ? "°C" : "°F";
+  const windUnitLabel = unitSystem === "metric" ? "m/s" : "mph";
+
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+
+      const syncSettings = async () => {
+        const settings = await getSettings();
+        if (!mounted) return;
+
+        setUnitSystem(settings.unitSystem);
+
+        if (weather?.name) {
+          try {
+            const refreshed = await getWeather(
+              weather.name,
+              settings.unitSystem,
+            );
+            if (mounted) setWeather(refreshed);
+          } catch {
+            // Keep previous data if refresh fails.
+          }
+        }
+      };
+
+      syncSettings();
+
+      return () => {
+        mounted = false;
+      };
+    }, [weather?.name]),
+  );
+
+  useEffect(() => {
+    if (!weather) return;
+
+    cardOpacity.setValue(0);
+    cardTranslateY.setValue(24);
+    cardScale.setValue(0.96);
+
+    Animated.parallel([
+      Animated.timing(cardOpacity, {
+        toValue: 1,
+        duration: 260,
+        useNativeDriver: true,
+      }),
+      Animated.timing(cardTranslateY, {
+        toValue: 0,
+        duration: 320,
+        useNativeDriver: true,
+      }),
+      Animated.spring(cardScale, {
+        toValue: 1,
+        friction: 7,
+        tension: 60,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [cardOpacity, cardScale, cardTranslateY, weather]);
 
   const fetchWeather = async () => {
     Keyboard.dismiss();
@@ -23,19 +90,14 @@ export default function Home() {
     if (!city.trim()) return;
 
     try {
-      const data = await getWeather(city);
+      const settings = await getSettings();
+      setUnitSystem(settings.unitSystem);
+
+      const data = await getWeather(city, settings.unitSystem);
       setWeather(data);
     } catch (error) {
       console.log(error);
     }
-  };
-
-  const getOutfit = (temp: number) => {
-    if (temp < 0) return "🧥 Winter jacket";
-    if (temp < 10) return "🧥 Jacket";
-    if (temp < 20) return "🧢 Hoodie";
-    if (temp < 30) return "👕 T-shirt";
-    return "🔥 Stay hydrated";
   };
 
   return (
@@ -66,27 +128,42 @@ export default function Home() {
             style={[styles.input, isInputFocused && styles.inputFocused]}
           />
 
-          <Pressable style={styles.primaryButton} onPress={fetchWeather}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.primaryButton,
+              pressed && styles.primaryButtonPressed,
+            ]}
+            onPress={fetchWeather}
+          >
             <Text style={styles.primaryButtonText}>Check Weather</Text>
           </Pressable>
 
           <View style={styles.navButtonsWrap}>
             <Pressable
-              style={styles.secondaryButton}
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                pressed && styles.secondaryButtonPressed,
+              ]}
               onPress={() => router.push("/forecast")}
             >
               <Text style={styles.secondaryButtonText}>Forecast</Text>
             </Pressable>
 
             <Pressable
-              style={styles.secondaryButton}
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                pressed && styles.secondaryButtonPressed,
+              ]}
               onPress={() => router.push("/outfit")}
             >
               <Text style={styles.secondaryButtonText}>Outfit details</Text>
             </Pressable>
 
             <Pressable
-              style={styles.secondaryButton}
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                pressed && styles.secondaryButtonPressed,
+              ]}
               onPress={() => router.push("/settings")}
             >
               <Text style={styles.secondaryButtonText}>Settings</Text>
@@ -95,7 +172,18 @@ export default function Home() {
         </View>
 
         {weather && (
-          <View style={styles.card}>
+          <Animated.View
+            style={[
+              styles.card,
+              {
+                opacity: cardOpacity,
+                transform: [
+                  { translateY: cardTranslateY },
+                  { scale: cardScale },
+                ],
+              },
+            ]}
+          >
             <Text style={styles.cardBadge}>Live Weather</Text>
             <Text style={styles.city}>{weather.name}</Text>
 
@@ -106,7 +194,10 @@ export default function Home() {
               style={{ width: 100, height: 100 }}
             />
 
-            <Text style={styles.temp}>{weather.main.temp}°C</Text>
+            <Text style={styles.temp}>
+              {Math.round(weather.main.temp)}
+              {unitLabel}
+            </Text>
             <Text style={styles.description}>
               {weather.weather[0].description}
             </Text>
@@ -125,13 +216,11 @@ export default function Home() {
               <View style={styles.statChip}>
                 <Text style={styles.statLabel}>Wind</Text>
                 <Text style={styles.statValue}>
-                  {weather.wind?.speed ?? 0} m/s
+                  {Number(weather.wind?.speed ?? 0).toFixed(1)} {windUnitLabel}
                 </Text>
               </View>
             </View>
-
-            <Text style={styles.outfit}>{getOutfit(weather.main.temp)}</Text>
-          </View>
+          </Animated.View>
         )}
       </ScrollView>
     </View>
@@ -171,6 +260,7 @@ const styles = StyleSheet.create({
     left: -90,
   },
   title: {
+    marginTop: 20,
     fontSize: 36,
     fontWeight: "800",
     color: "#F8FAFC",
@@ -212,6 +302,14 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: "center",
+    shadowColor: "#38BDF8",
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  primaryButtonPressed: {
+    transform: [{ scale: 0.98 }],
+    opacity: 0.92,
   },
   primaryButtonText: {
     color: "#082F49",
@@ -229,6 +327,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     alignItems: "center",
     backgroundColor: "rgba(15,23,42,0.25)",
+  },
+  secondaryButtonPressed: {
+    backgroundColor: "rgba(56,189,248,0.18)",
+    borderColor: "rgba(125,211,252,0.7)",
+    transform: [{ scale: 0.985 }],
   },
   secondaryButtonText: {
     color: "#DBEAFE",
@@ -292,11 +395,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
     color: "#E2E8F0",
-  },
-  outfit: {
-    marginTop: 10,
-    fontWeight: "700",
-    color: "#E0F2FE",
-    fontSize: 16,
   },
 });

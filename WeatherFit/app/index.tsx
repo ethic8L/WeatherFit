@@ -1,23 +1,184 @@
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import {
+  Animated,
+  Easing,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { router } from "expo-router";
+import { useEffect, useRef } from "react";
 
 export default function Index() {
+  const heroOpacity = useRef(new Animated.Value(0)).current;
+  const heroTranslateY = useRef(new Animated.Value(28)).current;
+  const heroScale = useRef(new Animated.Value(0.95)).current;
+
+  const topBlobShift = useRef(new Animated.Value(0)).current;
+  const bottomBlobShift = useRef(new Animated.Value(0)).current;
+  const startButtonPulse = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(heroOpacity, {
+        toValue: 1,
+        duration: 520,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(heroTranslateY, {
+        toValue: 0,
+        duration: 620,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.spring(heroScale, {
+        toValue: 1,
+        friction: 8,
+        tension: 55,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    const blobLoop = Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(topBlobShift, {
+            toValue: 1,
+            duration: 2800,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+          Animated.timing(topBlobShift, {
+            toValue: 0,
+            duration: 2800,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.sequence([
+          Animated.timing(bottomBlobShift, {
+            toValue: 1,
+            duration: 3200,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+          Animated.timing(bottomBlobShift, {
+            toValue: 0,
+            duration: 3200,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+        ]),
+      ]),
+    );
+
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(startButtonPulse, {
+          toValue: 1.03,
+          duration: 1000,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(startButtonPulse, {
+          toValue: 1,
+          duration: 1000,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    blobLoop.start();
+    pulseLoop.start();
+
+    return () => {
+      blobLoop.stop();
+      pulseLoop.stop();
+    };
+  }, [
+    bottomBlobShift,
+    heroOpacity,
+    heroScale,
+    heroTranslateY,
+    startButtonPulse,
+    topBlobShift,
+  ]);
+
+  const topBlobTranslateY = topBlobShift.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 18],
+  });
+
+  const topBlobScale = topBlobShift.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.06],
+  });
+
+  const bottomBlobTranslateY = bottomBlobShift.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -16],
+  });
+
+  const bottomBlobScale = bottomBlobShift.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.05],
+  });
+
   return (
     <View style={styles.container}>
-      <View style={styles.bgCircleTop} />
-      <View style={styles.bgCircleBottom} />
+      <Animated.View
+        style={[
+          styles.bgCircleTop,
+          {
+            transform: [
+              { translateY: topBlobTranslateY },
+              { scale: topBlobScale },
+            ],
+          },
+        ]}
+      />
+      <Animated.View
+        style={[
+          styles.bgCircleBottom,
+          {
+            transform: [
+              { translateY: bottomBlobTranslateY },
+              { scale: bottomBlobScale },
+            ],
+          },
+        ]}
+      />
 
-      <View style={styles.card}>
+      <Animated.View
+        style={[
+          styles.card,
+          {
+            opacity: heroOpacity,
+            transform: [{ translateY: heroTranslateY }, { scale: heroScale }],
+          },
+        ]}
+      >
         <Text style={styles.badge}>Smart Assistant</Text>
         <Text style={styles.title}>WeatherFit</Text>
         <Text style={styles.subtitle}>
-          Pick an outfit and stay comfortable all day long, no matter the weather.
+          Pick an outfit and stay comfortable all day long, no matter the
+          weather.
         </Text>
 
-        <Pressable style={styles.button} onPress={() => router.push("/home")}>
-          <Text style={styles.buttonText}>Press to start</Text>
-        </Pressable>
-      </View>
+        <Animated.View style={{ transform: [{ scale: startButtonPulse }] }}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.button,
+              pressed && styles.buttonPressed,
+            ]}
+            onPress={() => router.push("/home")}
+          >
+            <Text style={styles.buttonText}>Press to start</Text>
+          </Pressable>
+        </Animated.View>
+      </Animated.View>
     </View>
   );
 }
@@ -94,6 +255,14 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 14,
     alignItems: "center",
+    shadowColor: "#38BDF8",
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+  },
+  buttonPressed: {
+    transform: [{ scale: 0.98 }],
+    opacity: 0.92,
   },
   buttonText: {
     fontSize: 17,
